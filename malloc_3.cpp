@@ -32,7 +32,7 @@ public:
     MallocMetadataNode* tail;
 
     MallocMetadataList():numOfFreeBlocks(0),sizeOfFreeBlocks(0),numOfUsedBlocks(0),sizeOfUsedBlocks(0),
-                            head(nullptr),tail(nullptr){};
+                         head(nullptr),tail(nullptr){};
 
     MallocMetadataList(const MallocMetadataList &mallocMetadataList) = default;
     MallocMetadataList &operator=(const MallocMetadataList &mallocMetadataList) = default;
