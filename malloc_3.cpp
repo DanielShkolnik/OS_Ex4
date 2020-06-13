@@ -110,6 +110,11 @@ void* scalloc(size_t num, size_t size){
     return newBlockPtr;
 }
 
+
+void blockCombine(MallocMetadataNode* blockA, MallocMetadataNode* blockB){
+
+}
+
 void sfree(void* p){
     if(p == NULL) return;
     MallocMetadataNode* current = mallocMetadataList.head;
