@@ -44,6 +44,23 @@ public:
 
 MallocMetadataList mallocMetadataList = MallocMetadataList();
 
+void blockSplit(void* block, size_t usedSize){
+    size_t prevSize = ((MallocMetadataNode*)block)->size;
+    ((MallocMetadataNode*)block)->size=usedSize + sizeof(MallocMetadataNode);
+    ((MallocMetadataNode*)block)->is_free = false;
+    MallocMetadataNode* newBlock = (MallocMetadataNode*)((unsigned long)((MallocMetadataNode*)block+2)+usedSize);
+    newBlock->size = prevSize - ((MallocMetadataNode*)block)->size;
+    newBlock->is_free = true;
+    newBlock->prev = (MallocMetadataNode*)block;
+    newBlock->next = ((MallocMetadataNode*)block)->next;
+    ((MallocMetadataNode*)block)->next = newBlock;
+
+    mallocMetadataList.numOfUsedBlocks++;
+    mallocMetadataList.sizeOfFreeBlocks-=((MallocMetadataNode*)block)->size;
+    mallocMetadataList.sizeOfUsedBlocks+=((MallocMetadataNode*)block)->size;
+};
+
+
 
 void* smalloc(size_t size){
     if(size<=0 || size>1e8) return NULL;
@@ -51,12 +68,18 @@ void* smalloc(size_t size){
 
     while (current != nullptr){
         if(current->is_free && current->size>(size+sizeof(MallocMetadataNode))){
-            current->is_free = false;
-            mallocMetadataList.numOfFreeBlocks--;
-            mallocMetadataList.numOfUsedBlocks++;
-            mallocMetadataList.sizeOfFreeBlocks-=current->size;
-            mallocMetadataList.sizeOfUsedBlocks+=current->size;
-            return (void*)((MallocMetadataNode*)current+1);
+            if(current->size>size+2*sizeof(MallocMetadataNode)+128){
+                blockSplit(current,size);
+                return (void*)((MallocMetadataNode*)current+1);
+            }
+            else{
+                current->is_free = false;
+                mallocMetadataList.numOfFreeBlocks--;
+                mallocMetadataList.numOfUsedBlocks++;
+                mallocMetadataList.sizeOfFreeBlocks-=current->size;
+                mallocMetadataList.sizeOfUsedBlocks+=current->size;
+                return (void*)((MallocMetadataNode*)current+1);
+            }
         }
         current = current->next;
     }
