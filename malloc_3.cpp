@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
-
+#include <sys/mman.h>
 
 typedef struct MallocMetadataNode_t{
 public:
@@ -70,8 +70,16 @@ void blockSplit(MallocMetadataNode* block, size_t usedSize){
 void* smalloc(size_t size){
     if(size<=0 || size>1e8) return NULL;
 
-    if(size>=128000){
+    if(size>=128*1024){
+        MallocMetadataNode* newBlock = (MallocMetadataNode*)mmap(NULL,(size_t)(size+sizeof(MallocMetadataNode)),PROT_READ|PROT_WRITE|PROT_EXEC,MAP_ANON|MAP_PRIVATE,0,0);
+        if(newBlock == (void*)(-1)) return NULL;
 
+        initMallocMetadataNode(newBlock,size+sizeof(MallocMetadataNode));
+
+        mallocMetadataList.numOfUsedBlocks++;
+        mallocMetadataList.sizeOfUsedBlocks+=size+sizeof(MallocMetadataNode);
+
+        return (void*)((MallocMetadataNode*)newBlock+1);
     }
     else{
         MallocMetadataNode* current = mallocMetadataList.head;
@@ -167,13 +175,20 @@ void blockCombine(MallocMetadataNode* block){
 void sfree(void* p){
     if(p == NULL) return;
     MallocMetadataNode* current = (MallocMetadataNode*)p-1;
-    if(current->is_free) return;
-    current->is_free = true;
-    mallocMetadataList.numOfFreeBlocks++;
-    mallocMetadataList.numOfUsedBlocks--;
-    mallocMetadataList.sizeOfFreeBlocks+=current->size;
-    mallocMetadataList.sizeOfUsedBlocks-=current->size;
-    if((current->prev!= nullptr && current->prev->is_free) || (current->next!= nullptr && current->next->is_free)) blockCombine(current);
+    if(current->size>=(size_t)(128*1024+sizeof(MallocMetadataNode))){
+        mallocMetadataList.numOfUsedBlocks--;
+        mallocMetadataList.sizeOfUsedBlocks-=current->size;
+        munmap(p,current->size);
+    }
+    else{
+        if(current->is_free) return;
+        current->is_free = true;
+        mallocMetadataList.numOfFreeBlocks++;
+        mallocMetadataList.numOfUsedBlocks--;
+        mallocMetadataList.sizeOfFreeBlocks+=current->size;
+        mallocMetadataList.sizeOfUsedBlocks-=current->size;
+        if((current->prev!= nullptr && current->prev->is_free) || (current->next!= nullptr && current->next->is_free)) blockCombine(current);
+    }
 }
 
 void* srealloc(void* oldp, size_t size){
@@ -181,65 +196,76 @@ void* srealloc(void* oldp, size_t size){
     if(oldp == NULL) return smalloc(size);
     MallocMetadataNode* current = (MallocMetadataNode*)oldp-1;
     if(size+sizeof(MallocMetadataNode)<=current->size) return (void*)((MallocMetadataNode*)current+1);
-    MallocMetadataNode* prevBlock = current->prev;
-    MallocMetadataNode* nextBlock = current->next;
-    //Combine left
-    if(prevBlock!= nullptr && prevBlock->size+current->size>=size+sizeof(MallocMetadataNode)){
-        prevBlock->size += current->size;
-        prevBlock->next = current->next;
-        if(current->next!= nullptr) current->next->prev = prevBlock;
-        mallocMetadataList.numOfFreeBlocks--;
-        if(mallocMetadataList.tail == current) mallocMetadataList.tail = prevBlock;
-
-        memcpy((void*)((MallocMetadataNode*)prevBlock+1),oldp,size);
-
-        if(prevBlock->size>=size+2*sizeof(MallocMetadataNode)+128) {
-            blockSplit((MallocMetadataNode*)prevBlock,size);
-            return (void *) ((MallocMetadataNode *) prevBlock + 1);
-        }
-
-        return (void*)((MallocMetadataNode*)prevBlock+1);
-    }
-    //Combine right
-    else if(nextBlock!= nullptr && nextBlock->size+current->size>=size+sizeof(MallocMetadataNode)){
-        current->size += nextBlock->size;
-        current->next = nextBlock->next;
-        if(nextBlock->next!= nullptr) nextBlock->next->prev = current;
-        mallocMetadataList.numOfFreeBlocks--;
-
-        memcpy((void*)((MallocMetadataNode*)current+1),oldp,size);
-
-        if(current->size>=size+2*sizeof(MallocMetadataNode)+128) {
-            blockSplit((MallocMetadataNode*)current,size);
-            return (void *) ((MallocMetadataNode *) current + 1);
-        }
-
-        return (void*)((MallocMetadataNode*)current+1);
-    }
-    //Combine left and right
-    else if(prevBlock!= nullptr && nextBlock!= nullptr  && prevBlock->size+nextBlock->size+current->size>=size+sizeof(MallocMetadataNode)){
-        prevBlock->size += current->size + nextBlock->size;
-        prevBlock->next = nextBlock->next;
-        if(nextBlock->next!= nullptr) nextBlock->next->prev = prevBlock;
-        mallocMetadataList.numOfFreeBlocks-=2;
-        if(mallocMetadataList.tail == current) mallocMetadataList.tail = prevBlock;
-
-        memcpy((void*)((MallocMetadataNode*)prevBlock+1),oldp,size);
-
-        if(prevBlock->size>=size+2*sizeof(MallocMetadataNode)+128) {
-            blockSplit((MallocMetadataNode*)prevBlock,size);
-            return (void *) ((MallocMetadataNode *) prevBlock + 1);
-        }
-
-        return (void*)((MallocMetadataNode*)prevBlock+1);
-    }
-    //No blocks to combine
-    else{
+    if(size>=128*1024){
         void* newBlockPtr = smalloc(size);
         if(newBlockPtr == NULL) return NULL;
-        memcpy(newBlockPtr,oldp,size);
+
+        memcpy((void*)((MallocMetadataNode*)newBlockPtr+1),oldp,size);
         sfree(oldp);
+
         return newBlockPtr;
+    }
+    else{
+        MallocMetadataNode* prevBlock = current->prev;
+        MallocMetadataNode* nextBlock = current->next;
+        //Combine left
+        if(prevBlock!= nullptr && prevBlock->size+current->size>=size+sizeof(MallocMetadataNode)){
+            prevBlock->size += current->size;
+            prevBlock->next = current->next;
+            if(current->next!= nullptr) current->next->prev = prevBlock;
+            mallocMetadataList.numOfFreeBlocks--;
+            if(mallocMetadataList.tail == current) mallocMetadataList.tail = prevBlock;
+
+            memcpy((void*)((MallocMetadataNode*)prevBlock+1),oldp,size);
+
+            if(prevBlock->size>=size+2*sizeof(MallocMetadataNode)+128) {
+                blockSplit((MallocMetadataNode*)prevBlock,size);
+                return (void *) ((MallocMetadataNode *) prevBlock + 1);
+            }
+
+            return (void*)((MallocMetadataNode*)prevBlock+1);
+        }
+            //Combine right
+        else if(nextBlock!= nullptr && nextBlock->size+current->size>=size+sizeof(MallocMetadataNode)){
+            current->size += nextBlock->size;
+            current->next = nextBlock->next;
+            if(nextBlock->next!= nullptr) nextBlock->next->prev = current;
+            mallocMetadataList.numOfFreeBlocks--;
+
+            memcpy((void*)((MallocMetadataNode*)current+1),oldp,size);
+
+            if(current->size>=size+2*sizeof(MallocMetadataNode)+128) {
+                blockSplit((MallocMetadataNode*)current,size);
+                return (void *) ((MallocMetadataNode *) current + 1);
+            }
+
+            return (void*)((MallocMetadataNode*)current+1);
+        }
+            //Combine left and right
+        else if(prevBlock!= nullptr && nextBlock!= nullptr  && prevBlock->size+nextBlock->size+current->size>=size+sizeof(MallocMetadataNode)){
+            prevBlock->size += current->size + nextBlock->size;
+            prevBlock->next = nextBlock->next;
+            if(nextBlock->next!= nullptr) nextBlock->next->prev = prevBlock;
+            mallocMetadataList.numOfFreeBlocks-=2;
+            if(mallocMetadataList.tail == current) mallocMetadataList.tail = prevBlock;
+
+            memcpy((void*)((MallocMetadataNode*)prevBlock+1),oldp,size);
+
+            if(prevBlock->size>=size+2*sizeof(MallocMetadataNode)+128) {
+                blockSplit((MallocMetadataNode*)prevBlock,size);
+                return (void *) ((MallocMetadataNode *) prevBlock + 1);
+            }
+
+            return (void*)((MallocMetadataNode*)prevBlock+1);
+        }
+            //No blocks to combine
+        else{
+            void* newBlockPtr = smalloc(size);
+            if(newBlockPtr == NULL) return NULL;
+            memcpy(newBlockPtr,oldp,size);
+            sfree(oldp);
+            return newBlockPtr;
+        }
     }
 }
 
