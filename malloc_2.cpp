@@ -80,7 +80,7 @@ void* smalloc(size_t size){
 void* scalloc(size_t num, size_t size){
     if(size<=0 || num*size>1e8 || num<=0) return NULL;
 
-    void* newBlockPtr = smalloc(size);
+    void* newBlockPtr = smalloc(size*num);
     if(newBlockPtr == NULL) return NULL;
 
     memset((void*)((MallocMetadataNode*)newBlockPtr+1),0,size*num);
