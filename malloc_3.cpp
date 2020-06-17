@@ -31,11 +31,9 @@ public:
     size_t sizeOfUsedBlocks;
     MallocMetadataNode* head;
     MallocMetadataNode* tail;
-    MallocMetadataNode* headMMAP;
-    MallocMetadataNode* tailMMAP;
 
     MallocMetadataList():numOfFreeBlocks(0),sizeOfFreeBlocks(0),numOfUsedBlocks(0),sizeOfUsedBlocks(0),
-                         head(nullptr),tail(nullptr),headMMAP(nullptr),tailMMAP(nullptr){};
+                         head(nullptr),tail(nullptr){};
 
     MallocMetadataList(const MallocMetadataList &mallocMetadataList) = default;
     MallocMetadataList &operator=(const MallocMetadataList &mallocMetadataList) = default;
@@ -71,7 +69,7 @@ void* smalloc(size_t size){
     if(size<=0 || size>1e8) return NULL;
 
     if(size>=128*1024){
-        MallocMetadataNode* newBlock = (MallocMetadataNode*)mmap(NULL,(size_t)(size+sizeof(MallocMetadataNode)),PROT_READ|PROT_WRITE|PROT_EXEC,MAP_ANON|MAP_PRIVATE,0,0);
+        MallocMetadataNode* newBlock = (MallocMetadataNode*)mmap(NULL,(size_t)(size+sizeof(MallocMetadataNode)),PROT_READ|PROT_WRITE|PROT_EXEC,MAP_ANON|MAP_PRIVATE,-1,0);
         if(newBlock == (void*)(-1)) return NULL;
 
         initMallocMetadataNode(newBlock,size+sizeof(MallocMetadataNode));
