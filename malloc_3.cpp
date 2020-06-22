@@ -72,6 +72,24 @@ void blockSplit(MallocMetadataNode* block, size_t usedSize, bool isMalloc){
 };
 
 
+void* enlargeWildernessBlock(size_t size){
+    size_t wildernessBlockSize = mallocMetadataList.tail->size;
+    MallocMetadataNode* newBlock = (MallocMetadataNode*)sbrk((intptr_t)(size+sizeof(MallocMetadataNode)-wildernessBlockSize));
+    if(newBlock == (void*)(-1)) return NULL;
+    mallocMetadataList.tail->size = size+sizeof(MallocMetadataNode);
+    if(mallocMetadataList.tail->is_free){
+        mallocMetadataList.tail->is_free = false;
+        mallocMetadataList.numOfUsedBlocks++;
+        mallocMetadataList.numOfFreeBlocks--;
+        mallocMetadataList.sizeOfUsedBlocks+=size+sizeof(MallocMetadataNode);
+        mallocMetadataList.sizeOfFreeBlocks-=wildernessBlockSize;
+    }
+    else{
+        mallocMetadataList.sizeOfUsedBlocks+=size+sizeof(MallocMetadataNode)-wildernessBlockSize;
+    }
+    return (void*)((MallocMetadataNode*)mallocMetadataList.tail+1);
+}
+
 
 void* smalloc(size_t size){
     if(size<=0 || size>1e8) return NULL;
@@ -109,16 +127,7 @@ void* smalloc(size_t size){
         }
 
         if(mallocMetadataList.tail != nullptr && mallocMetadataList.tail->is_free){
-            size_t wildernessBlockSize = mallocMetadataList.tail->size;
-            MallocMetadataNode* newBlock = (MallocMetadataNode*)sbrk((intptr_t)(size+sizeof(MallocMetadataNode)-wildernessBlockSize));
-            if(newBlock == (void*)(-1)) return NULL;
-            mallocMetadataList.tail->is_free = false;
-            mallocMetadataList.tail->size = size+sizeof(MallocMetadataNode);
-            mallocMetadataList.numOfUsedBlocks++;
-            mallocMetadataList.numOfFreeBlocks--;
-            mallocMetadataList.sizeOfUsedBlocks+=size+sizeof(MallocMetadataNode);
-            mallocMetadataList.sizeOfFreeBlocks-=wildernessBlockSize;
-            return (void*)((MallocMetadataNode*)mallocMetadataList.tail+1);
+            return enlargeWildernessBlock(size);
         }
         else{
             MallocMetadataNode* newBlock = (MallocMetadataNode*)sbrk((intptr_t)(size+sizeof(MallocMetadataNode)));
@@ -227,63 +236,72 @@ void* srealloc(void* oldp, size_t size){
     else{
         MallocMetadataNode* prevBlock = current->prev;
         MallocMetadataNode* nextBlock = current->next;
-        //Combine left
-        if(prevBlock!= nullptr && prevBlock->size+current->size>=size+sizeof(MallocMetadataNode)){
-            prevBlock->size += current->size;
-            prevBlock->next = current->next;
-            if(current->next!= nullptr) current->next->prev = prevBlock;
-            mallocMetadataList.numOfFreeBlocks--;
-            if(mallocMetadataList.tail == current) mallocMetadataList.tail = prevBlock;
-
-            memmove((void*)((MallocMetadataNode*)prevBlock+1),oldp,size);
-
-            if(prevBlock->size>=size+2*sizeof(MallocMetadataNode)+128) {
-                blockSplit((MallocMetadataNode*)prevBlock,size, false);
-                return (void *) ((MallocMetadataNode *) prevBlock + 1);
-            }
-
-            return (void*)((MallocMetadataNode*)prevBlock+1);
+        //realloc on wilderness block
+        if(nextBlock == nullptr){
+            return enlargeWildernessBlock(size);
         }
-            //Combine right
-        else if(nextBlock!= nullptr && nextBlock->size+current->size>=size+sizeof(MallocMetadataNode)){
-            current->size += nextBlock->size;
-            current->next = nextBlock->next;
-            if(nextBlock->next!= nullptr) nextBlock->next->prev = current;
-            mallocMetadataList.numOfFreeBlocks--;
-
-            memmove((void*)((MallocMetadataNode*)current+1),oldp,size);
-
-            if(current->size>=size+2*sizeof(MallocMetadataNode)+128) {
-                blockSplit((MallocMetadataNode*)current,size, false);
-                return (void *) ((MallocMetadataNode *) current + 1);
-            }
-
-            return (void*)((MallocMetadataNode*)current+1);
-        }
-            //Combine left and right
-        else if(prevBlock!= nullptr && nextBlock!= nullptr  && prevBlock->size+nextBlock->size+current->size>=size+sizeof(MallocMetadataNode)){
-            prevBlock->size += current->size + nextBlock->size;
-            prevBlock->next = nextBlock->next;
-            if(nextBlock->next!= nullptr) nextBlock->next->prev = prevBlock;
-            mallocMetadataList.numOfFreeBlocks-=2;
-            if(mallocMetadataList.tail == current) mallocMetadataList.tail = prevBlock;
-
-            memmove((void*)((MallocMetadataNode*)prevBlock+1),oldp,size);
-
-            if(prevBlock->size>=size+2*sizeof(MallocMetadataNode)+128) {
-                blockSplit((MallocMetadataNode*)prevBlock,size, false);
-                return (void *) ((MallocMetadataNode *) prevBlock + 1);
-            }
-
-            return (void*)((MallocMetadataNode*)prevBlock+1);
-        }
-            //No blocks to combine
         else{
-            void* newBlockPtr = smalloc(size);
-            if(newBlockPtr == NULL) return NULL;
-            memmove(newBlockPtr,oldp,size);
-            sfree(oldp);
-            return newBlockPtr;
+            //Combine left
+            if(prevBlock!= nullptr && prevBlock->size+current->size>=size+sizeof(MallocMetadataNode)){
+                prevBlock->is_free=false;
+                prevBlock->size += current->size;
+                prevBlock->next = current->next;
+                if(current->next!= nullptr) current->next->prev = prevBlock;
+                mallocMetadataList.numOfFreeBlocks--;
+                if(mallocMetadataList.tail == current) mallocMetadataList.tail = prevBlock;
+
+                memmove((void*)((MallocMetadataNode*)prevBlock+1),oldp,size);
+
+                if(prevBlock->size>=size+2*sizeof(MallocMetadataNode)+128) {
+                    blockSplit((MallocMetadataNode*)prevBlock,size, false);
+                    return (void *) ((MallocMetadataNode *) prevBlock + 1);
+                }
+
+                return (void*)((MallocMetadataNode*)prevBlock+1);
+            }
+                //Combine right
+            else if(nextBlock!= nullptr && nextBlock->size+current->size>=size+sizeof(MallocMetadataNode)){
+                current->is_free=false;
+                current->size += nextBlock->size;
+                current->next = nextBlock->next;
+                if(nextBlock->next!= nullptr) nextBlock->next->prev = current;
+                mallocMetadataList.numOfFreeBlocks--;
+
+                memmove((void*)((MallocMetadataNode*)current+1),oldp,size);
+
+                if(current->size>=size+2*sizeof(MallocMetadataNode)+128) {
+                    blockSplit((MallocMetadataNode*)current,size, false);
+                    return (void *) ((MallocMetadataNode *) current + 1);
+                }
+
+                return (void*)((MallocMetadataNode*)current+1);
+            }
+                //Combine left and right
+            else if(prevBlock!= nullptr && nextBlock!= nullptr  && prevBlock->size+nextBlock->size+current->size>=size+sizeof(MallocMetadataNode)){
+                prevBlock->is_free=false;
+                prevBlock->size += current->size + nextBlock->size;
+                prevBlock->next = nextBlock->next;
+                if(nextBlock->next!= nullptr) nextBlock->next->prev = prevBlock;
+                mallocMetadataList.numOfFreeBlocks-=2;
+                if(mallocMetadataList.tail == current) mallocMetadataList.tail = prevBlock;
+
+                memmove((void*)((MallocMetadataNode*)prevBlock+1),oldp,size);
+
+                if(prevBlock->size>=size+2*sizeof(MallocMetadataNode)+128) {
+                    blockSplit((MallocMetadataNode*)prevBlock,size, false);
+                    return (void *) ((MallocMetadataNode *) prevBlock + 1);
+                }
+
+                return (void*)((MallocMetadataNode*)prevBlock+1);
+            }
+                //No blocks to combine
+            else{
+                void* newBlockPtr = smalloc(size);
+                if(newBlockPtr == NULL) return NULL;
+                memmove(newBlockPtr,oldp,size);
+                sfree(oldp);
+                return newBlockPtr;
+            }
         }
     }
 }
