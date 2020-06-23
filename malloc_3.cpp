@@ -248,7 +248,7 @@ void* srealloc(void* oldp, size_t size){
         }
         else{
             //Combine left
-            if(prevBlock!= nullptr && prevBlock->size+current->size>=size+sizeof(MallocMetadataNode)){
+            if(prevBlock!= nullptr && prevBlock->is_free && prevBlock->size+current->size>=size+sizeof(MallocMetadataNode)){
                 mallocMetadataList.sizeOfUsedBlocks+=prevBlock->size;
                 mallocMetadataList.sizeOfFreeBlocks-=prevBlock->size;
                 prevBlock->is_free=false;
@@ -268,7 +268,7 @@ void* srealloc(void* oldp, size_t size){
                 return (void*)((MallocMetadataNode*)prevBlock+1);
             }
                 //Combine right
-            else if(nextBlock!= nullptr && nextBlock->size+current->size>=size+sizeof(MallocMetadataNode)){
+            else if(nextBlock!= nullptr && nextBlock->is_free && nextBlock->size+current->size>=size+sizeof(MallocMetadataNode)){
                 mallocMetadataList.sizeOfUsedBlocks+=nextBlock->size;
                 mallocMetadataList.sizeOfFreeBlocks-=nextBlock->size;
                 current->is_free=false;
@@ -287,7 +287,7 @@ void* srealloc(void* oldp, size_t size){
                 return (void*)((MallocMetadataNode*)current+1);
             }
                 //Combine left and right
-            else if(prevBlock!= nullptr && nextBlock!= nullptr  && prevBlock->size+nextBlock->size+current->size>=size+sizeof(MallocMetadataNode)){
+            else if(prevBlock!= nullptr && prevBlock->is_free && nextBlock!= nullptr && nextBlock->is_free && prevBlock->size+nextBlock->size+current->size>=size+sizeof(MallocMetadataNode)){
                 mallocMetadataList.sizeOfUsedBlocks+=prevBlock->size + nextBlock->size;
                 mallocMetadataList.sizeOfFreeBlocks-=prevBlock->size + nextBlock->size;
                 prevBlock->is_free=false;
