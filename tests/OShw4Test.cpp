@@ -1,5 +1,20 @@
-#define META_SIZE         sizeof(MallocMetadata) // put your meta data name here.
+#include "malloc_3.cpp"
+#define META_SIZE         sizeof(MallocMetadataNode) // put your meta data name here.
+#include <assert.h>
+#include <iostream>
+using namespace std;
+
 int main() {
+	size_t num_allocated_bytes;
+    size_t num_freed_bytes;
+    size_t num_free_blocks;
+    ///////////////////////////////
+	print();
+    num_freed_bytes = _num_free_bytes();
+    num_allocated_bytes = _num_allocated_bytes();
+    num_free_blocks = _num_free_blocks();
+    //////////////////////////////
+    
     void *p1, *p2, *p3, *p4, *p5, *p6, *p7, *p8, *p9, *p10, *p11, *p12, *p13, *p14 ,*p15;
     //check mmap allocation and malloc/calloc fails
     smalloc(0);
@@ -10,13 +25,13 @@ int main() {
     scalloc(50, 0);
     scalloc(0, 50);
 
-    p1 = smalloc(100000000); // used 100m 0 free
-    p2 = scalloc(1, 10000000); // used 110m 0 free
-    p3 = scalloc(10000000, 1); // used 120m 0 free
-    p1 = srealloc(p1, 100000000); // used 120m 0 free
-    p3 = srealloc(p3, 20000000); // used 130m 0 free
-    p3 = srealloc(p3, 10000000); // 120m 10m free 0 free
-    p4 = srealloc(nullptr, 10000000); // used 130m 0 free
+    p1 = smalloc(100000000);
+    p2 = scalloc(1, 10000000);
+    p3 = scalloc(10000000, 1);
+    p1 = srealloc(p1, 100000000);
+    p3 = srealloc(p3, 20000000);
+    p3 = srealloc(p3, 10000000);
+    p4 = srealloc(nullptr, 10000000);
     assert(_num_free_blocks() == 0);
     assert(_num_free_bytes() == 0);
     assert(_num_allocated_blocks() == 4);
@@ -94,20 +109,21 @@ int main() {
     assert(_num_meta_data_bytes() == 6*META_SIZE);
     assert(block_list.tail == (MallocMetadata*)p6 - 1);
     assert(block_list.head == (MallocMetadata*)p1 - 1);
+    p5 = smalloc(1000);
     p1 = srealloc(p1,500-sizeof(MallocMetadata));
     sfree(p1);
     //check case a
-    p5 = srealloc(p5, 1000);
+
     assert(((MallocMetadata*)p5-1)->is_free==false);
     sfree(p5); sfree(p3);
     //check case b
     p3 = srealloc(p4,2000);
     //LIST CONDITION: 1-> 1000 FREE, 2->1000, 3->2000,
-                   // 5-> 1000 FREE, 6->2000 FREE
+    // 5-> 1000 FREE, 6->2000 FREE
     //now i return the list to its state before tha last realloc
     p3 = srealloc(p3,1000);
     p4 = ((char*)p3 + 1000 + META_SIZE);
-    p4 = srealloc(p4,1000);
+    p1 = smalloc(1000); p4=smalloc(1000); sfree(p1);
     sfree(p3);
     //check case d
     p3 = srealloc(p4,3000);
@@ -118,19 +134,23 @@ int main() {
     assert(_num_meta_data_bytes() == 4*META_SIZE);
     //just change the state of the list
     p3 = srealloc(p3,500);
-    p4 = srealloc((char*)p3+META_SIZE+500,1500);
-    p5 = srealloc((char*)p4+META_SIZE+1500,1000);
-    sfree(p3); sfree(p5);
+    p1 = smalloc(1000);
+    p4 = smalloc(1500);
+    p5 = smalloc(1000);
+    sfree(p1); sfree(p3); sfree(p5);
     //check case c
     p4 = srealloc(p4, 2500);
     p4 = srealloc(p4, 1000);
+
     assert(_num_free_blocks() == 3);
     assert(_num_free_bytes() == 3000);
     assert(_num_allocated_blocks() == 6);
     assert(_num_allocated_bytes() == 7000);
     assert(_num_meta_data_bytes() == 6*META_SIZE);
     //just change the state of the list
-    p3 = srealloc(p3, 500);
+    p1 = smalloc(1000);
+    p3 = smalloc(500);
+    sfree(p1);
     //check case e
     p1 = srealloc(p3, 900);
     assert(_num_free_blocks() == 2);
