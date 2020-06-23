@@ -116,7 +116,7 @@ void* smalloc(size_t size){
     if(size<=0 || size>1e8) return NULL;
 
     if(size>=128*1024){
-        MallocMetadataNode* newBlock = (MallocMetadataNode*)mmap(NULL,(size_t)(size+sizeOfMallocMetadataNode+7),PROT_READ|PROT_WRITE|PROT_EXEC,MAP_ANON|MAP_PRIVATE,-1,0);
+        MallocMetadataNode* newBlock = (MallocMetadataNode*)mmap(NULL,AlignSize((size_t)(size+sizeOfMallocMetadataNode+7)),PROT_READ|PROT_WRITE|PROT_EXEC,MAP_ANON|MAP_PRIVATE,-1,0);
         if(newBlock == (void*)(-1)) return NULL;
 
         size_t alignAddress = numOfBytesToAlignAdrress((intptr_t)newBlock);
