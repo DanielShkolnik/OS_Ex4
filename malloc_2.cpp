@@ -111,7 +111,7 @@ void* srealloc(void* oldp, size_t size){
     if(size+sizeof(MallocMetadataNode)<=current->size) return (void*)((MallocMetadataNode*)current+1);
     void* newBlockPtr = smalloc(size);
     if(newBlockPtr == NULL) return NULL;
-    memcpy(newBlockPtr,(void*)((MallocMetadataNode*)oldp+1),size);
+    memmove(newBlockPtr,oldp,size);
     sfree(oldp);
     return (void*)newBlockPtr;
 }
