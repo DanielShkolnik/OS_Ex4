@@ -1,5 +1,5 @@
-#include "malloc_3.cpp"
-#define META_SIZE         sizeof(MallocMetadataNode) // put your meta data name here.
+#include "malloc_4.cpp"
+#define META_SIZE         sizeOfMallocMetadataNode // put your meta data name here.
 #include <assert.h>
 #include <iostream>
 using namespace std;
@@ -9,7 +9,7 @@ int main() {
     size_t num_freed_bytes;
     size_t num_free_blocks;
     ///////////////////////////////
-	print();
+	//print();
     num_freed_bytes = _num_free_bytes();
     num_allocated_bytes = _num_allocated_bytes();
     num_free_blocks = _num_free_blocks();
@@ -65,8 +65,8 @@ int main() {
     assert(_num_allocated_blocks() == 3);
     assert(_num_allocated_bytes() == 5000 + 2*META_SIZE);
     assert(_num_meta_data_bytes() == 3 * META_SIZE);
-    assert(block_list.tail == (MallocMetadata*)p4 - 1);
-    assert(block_list.head == (MallocMetadata*)p1 - 1);
+    assert(mallocMetadataList.tail == (MallocMetadataNode*)p4 - 1);
+    assert(mallocMetadataList.head == (MallocMetadataNode*)p1 - 1);
     //list condition: FREE OF 2032 -> BLOCK OF 1000 -> FREE OF 2032
     p1 = smalloc(1000);
     p2 = smalloc(1000);
@@ -76,18 +76,18 @@ int main() {
     assert(_num_allocated_blocks() == 4);
     assert(_num_allocated_bytes() == 6000);
     assert(_num_meta_data_bytes() == 4 * META_SIZE);
-    assert(block_list.tail == (MallocMetadata*)p4 - 1);
-    assert(block_list.head == (MallocMetadata*)p1 - 1);
+    assert(mallocMetadataList.tail == (MallocMetadataNode*)p4 - 1);
+    assert(mallocMetadataList.head == (MallocMetadataNode*)p1 - 1);
     sfree(p1); sfree(p2); sfree(p3); sfree(p4);
     assert(_num_free_blocks() == 1);
     assert(_num_free_bytes() == 6000+3*META_SIZE);
     assert(_num_allocated_blocks() == 1);
     assert(_num_allocated_bytes() == 6000+3*META_SIZE);
     assert(_num_meta_data_bytes() == META_SIZE);
-    assert(block_list.tail == (MallocMetadata*)p1 - 1);
-    assert(block_list.head == (MallocMetadata*)p1 - 1);
-    assert(mmap_list.head == nullptr);
-    assert(mmap_list.head == nullptr);
+    assert(mallocMetadataList.tail == (MallocMetadataNode*)p1 - 1);
+    assert(mallocMetadataList.head == (MallocMetadataNode*)p1 - 1);
+    //assert(mmap_list.head == nullptr);
+    //assert(mmap_list.head == nullptr);
     p1 = smalloc(1000); p2 = scalloc(2,500);
     p3 = smalloc(1000); p4 = scalloc(10,100);
     p5 = smalloc(1000); p6 = scalloc(250,4);
@@ -107,14 +107,14 @@ int main() {
     assert(_num_allocated_blocks() == 6);
     assert(_num_allocated_bytes() == 7000);
     assert(_num_meta_data_bytes() == 6*META_SIZE);
-    assert(block_list.tail == (MallocMetadata*)p6 - 1);
-    assert(block_list.head == (MallocMetadata*)p1 - 1);
+    assert(mallocMetadataList.tail == (MallocMetadataNode*)p6 - 1);
+    assert(mallocMetadataList.head == (MallocMetadataNode*)p1 - 1);
     p5 = smalloc(1000);
-    p1 = srealloc(p1,500-sizeof(MallocMetadata));
+    p1 = srealloc(p1,500-sizeOfMallocMetadataNode);
     sfree(p1);
     //check case a
 
-    assert(((MallocMetadata*)p5-1)->is_free==false);
+    assert(((MallocMetadataNode*)p5-1)->is_free==false);
     sfree(p5); sfree(p3);
     //check case b
     p3 = srealloc(p4,2000);
@@ -158,8 +158,8 @@ int main() {
     assert(_num_allocated_blocks() == 6);
     assert(_num_allocated_bytes() == 7000);
     assert(_num_meta_data_bytes() == 6*META_SIZE);
-    assert(block_list.tail == (MallocMetadata*)p6 - 1);
-    assert(block_list.head == (MallocMetadata*)p1 - 1);
+    assert(mallocMetadataList.tail == (MallocMetadataNode*)p6 - 1);
+    assert(mallocMetadataList.head == (MallocMetadataNode*)p1 - 1);
     //check case f
     for (int i = 0; i < 250; ++i)
         *((int*)p1+i) = 2;
@@ -171,9 +171,9 @@ int main() {
     assert(_num_allocated_blocks() == 7);
     assert(_num_allocated_bytes() == 9000);
     assert(_num_meta_data_bytes() == 7*META_SIZE);
-    assert(block_list.tail == (MallocMetadata*)p7 - 1);
-    assert(block_list.head == (MallocMetadata*)p1 - 1);
-    //block_list.print_list();
+    assert(mallocMetadataList.tail == (MallocMetadataNode*)p7 - 1);
+    assert(mallocMetadataList.head == (MallocMetadataNode*)p1 - 1);
+    //mallocMetadataList.print_list();
     /*LIST CONDITION:
      * 1->1000 free
      * 2->1000

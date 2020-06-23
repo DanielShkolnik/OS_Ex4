@@ -175,7 +175,8 @@ void blockCombine(MallocMetadataNode* block){
         prevBlock->next = nextBlock->next;
         if(nextBlock->next!= nullptr) nextBlock->next->prev = prevBlock;
         mallocMetadataList.numOfFreeBlocks-=2;
-        if(mallocMetadataList.tail == block) mallocMetadataList.tail = prevBlock;
+        if(prevBlock->next == nullptr) mallocMetadataList.tail = prevBlock;
+        if(prevBlock->prev == nullptr) mallocMetadataList.head = prevBlock;
     }
     //left block is free
     else if(prevBlock!= nullptr && prevBlock->is_free){
@@ -183,7 +184,8 @@ void blockCombine(MallocMetadataNode* block){
         prevBlock->next = block->next;
         if(block->next!= nullptr) block->next->prev = prevBlock;
         mallocMetadataList.numOfFreeBlocks--;
-        if(mallocMetadataList.tail == block) mallocMetadataList.tail = prevBlock;
+        if(prevBlock->next == nullptr) mallocMetadataList.tail = prevBlock;
+        if(prevBlock->prev == nullptr) mallocMetadataList.head = prevBlock;
     }
     //right block is free
     else if(nextBlock!= nullptr && nextBlock->is_free){
@@ -191,6 +193,8 @@ void blockCombine(MallocMetadataNode* block){
         block->next = nextBlock->next;
         if(nextBlock->next!= nullptr) nextBlock->next->prev = block;
         mallocMetadataList.numOfFreeBlocks--;
+        if(nextBlock->next == nullptr) mallocMetadataList.tail = nextBlock;
+        if(nextBlock->prev == nullptr) mallocMetadataList.head = nextBlock;
     }
 
 }
